@@ -19,7 +19,6 @@ jobs:
       contents: write
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-      IS_MIHOMO_ENABLED: "false"
 
     steps:
     - uses: actions/checkout@v5
@@ -45,6 +44,7 @@ jobs:
       
     - name: Run Renew Script
       env:
+        IS_MIHOMO_ENABLED: "false"
         # 将 USERS_JSON 配置在 GitHub Repository Secrets 中
         # 格式: [{"username": "xxx", "password": "xxx"}, ...]
         USERS_JSON: ${{ secrets.USERS_JSON || secrets.USERS }}
