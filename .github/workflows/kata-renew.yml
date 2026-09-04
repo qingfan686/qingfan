@@ -1,93 +1,64 @@
-name: "@s5gydl kata 自动续期任务"
+name: s5gydl kata 自动续期任务
 
 on:
+  workflow_dispatch:
   schedule:
-    # 每天执行：UTC 22:00 (北京时间 次日早上 06:00)
-    - cron: '0 22 * * *'
-  workflow_dispatch: # 允许手动触发
+    - cron: '0 16 * * *'
 
 jobs:
   renew:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-    
     steps:
-    - uses: actions/checkout@v5
-    
-    - name: Setup Node.js
-      uses: actions/setup-node@v5
-      with:
-        node-version: '22'
-        cache: 'npm'
+      - name: Set up job
+        run: echo "任务开始"
 
-    - name: Cache Node Modules
-      id: cache-npm
-      uses: actions/cache@v4
-      with:
-        path: node_modules
-        key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
+      - name: Run actions/checkout@v5
+        uses: actions/checkout@v5
 
-    - name: Cache Playwright
-      id: cache-playwright
-      uses: actions/cache@v4
-      with:
-        path: ~/.cache/ms-playwright
-        key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          always-auth: false
+          check-latest: false
 
-    - name: Install Dependencies
-      run: |
-        if [ "${{ steps.cache-npm.outputs.cache-hit }}" != "true" ]; then
-          echo "📦 未命中缓存，安装 NPM 依赖..."
-          npm ci || npm install
-        else
-          echo "⚡ 命中 Node Modules 缓存，跳过 npm install"
-        fi
-        if [ "${{ steps.cache-playwright.outputs.cache-hit }}" != "true" ]; then
-          echo "🌐 未命中缓存，安装 Playwright 系统环境依赖..."
-          npx playwright install-deps chrome
-        else
-          echo "⚡ 命中 Playwright 依赖缓存，跳过重复下载"
-        fi
-      
-    - name: Run Renew Script
-      env:
-        # 将 USERS_JSON 配置在 GitHub Repository Secrets 中
-        # 格式: [{"username": "xxx", "password": "xxx"}, ...]
-        USERS_JSON: ${{ secrets.USERS_JSON || secrets.USERS }}
-        USERS: ${{ secrets.USERS || secrets.USERS_JSON }}
-        # 代理变量（只需配置 PROXY_URL 或 SUB_URL 其中一个即可，脚本自动智能解析订阅/S5/TG等任意格式）
-        PROXY_URL: ${{ secrets.PROXY_URL }}
-        SUB_URL: ${{ secrets.SUB_URL }}
-        S5_URL: ${{ secrets.S5_URL }}
-        HTTP_PROXY: ${{ secrets.HTTP_PROXY }}
-        TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
-        TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
-        TG_THREAD_ID: ${{ secrets.TG_THREAD_ID }}
-      # 使用 xvfb-run 模拟有头环境运行
-      run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" node kata_renew.js
+      - name: Install Dependencies
+        run: npm install
 
-    - name: Commit Renew Dates
-      if: always()
-      run: |
-        git config --global user.name 'github-actions[bot]'
-        git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-        git add renew_dates.json || true
-        git diff --cached --quiet renew_dates.json || git commit -m "chore: update renew dates [skip ci]"
-        for i in {1..5}; do
-          git pull --rebase --autostash || true
-          if git push; then
-            break
-          fi
-          echo "⚠️ Push failed, retrying in 5 seconds ($i/5)..."
-          sleep 5
-        done
+      - name: Run Renew Script
+        env:
+          USERS_JSON: ${{ secrets.USERS_JSON }}
+          PROXY_URL: ${{ secrets.PROXY_URL }}
+          SUB_URL: ${{ secrets.SUB_URL }}
+          S5_URL: ${{ secrets.S5_URL }}
+          HTTP_PROXY: ${{ secrets.HTTP_PROXY }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          TG_THREAD_ID: ${{ secrets.TG_THREAD_ID }}
+          DEBUG_SCREENSHOT: true
+          DEBUG: true
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" node kata_renew.js
 
-    - name: Upload Screenshots
-      if: always()
-      uses: actions/upload-artifact@v5
-      with:
-        name: screenshots
-        path: screenshots/
+      - name: Commit Renew Dates
+        continue-on-error: true
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add renew_dates.json || true
+          git diff --cached --quiet renew_dates.json || git commit -m "chore: update renew dates" renew_dates.json
+          for i in {1..5}; do
+            git pull --rebase --autostash || true
+            if git push; then
+              break
+            fi
+            sleep 5
+          done
+        shell: /usr/bin/bash -e
+
+      - name: Upload Screenshots
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: screenshots
+          path: screenshots/
